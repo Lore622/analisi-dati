@@ -1,0 +1,405 @@
+---
+title: "HSAM: Analisi Go-NoGo"
+author: "Lorenzo Atzeni"
+format:
+  html:
+    code: false  # Nasconde completamente il codice (senza freccette)
+    theme: flatly
+    self-contained: true
+editor: visual
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+### Pre-processing, data cleaning
+
+Ho applicato una procedura simile a quella del dataframe del matching task, selezionando solo trial eseguiti correttamente (accuratezza=1) della condizione go. Inoltre ho escluso tempi di reazione estremi, definiti come valori oltre ±3 deviazioni standard dalla media per ciascun partecipante e condizione.
+
+```{r, echo=FALSE}
+library(knitr)
+
+df_go <- read.csv("C:/Users/39348/Desktop/DATI/go_unificato.csv", stringsAsFactors = FALSE)
+x <- table(df_go$id_subj, df_go$block_order)
+
+# Prendi head e tail
+hx <- head(x)
+tx <- tail(x)
+
+# Costruzione tabella affiancata senza duplicazioni
+tabella_affiancata <- cbind(
+  ID_CNTRL = rownames(hx),
+  hx,
+  ID_HSAM = rownames(tx),
+  tx
+)
+
+# Stampa la tabella
+kable(tabella_affiancata,
+      caption = " trial per CNTRL (head) e HSAM (tail)",
+      align = rep("c", ncol(tabella_affiancata)))
+
+```
+
+Selezioniamo solo trial corretti:
+
+```{r, echo=FALSE}
+library(knitr)
+
+df_go_acc <- df_go[df_go$acc == 1 & df_go$identity == "go", ]
+
+g <- table(df_go_acc$id_subj, df_go_acc$block_order)
+
+# Prendi head e tail
+dx <- head(g)
+gx <- tail(g)
+
+# Costruzione tabella affiancata senza duplicazioni
+tabella_affiancata_2 <- cbind(
+  ID_CNTRL = rownames(dx),
+  dx,
+  ID_HSAM = rownames(gx),
+  gx
+)
+
+# Stampa la tabella
+kable(tabella_affiancata_2,
+      caption = " trial per CNTRL (head) e HSAM (tail)",
+      align = rep("c", ncol(tabella_affiancata)))
+
+
+
+
+
+```
+
+CNTRL_13 deve essere escluso perchè ha sbagliato tutti i trial eccetto 1.
+
+```{r, echo=FALSE}
+c13<-df_go_acc[df_go_acc$id_subj== "CNTRL13",]
+
+table(c13$id_subj, c13$block_order)
+
+df_go_acc <-df_go_acc[!df_go_acc$id_subj %in% c("CNTRL13"), ]
+#controllo
+
+df_go_acc$ordine<-ifelse(df_go_acc$block_order=="self-first", "TU","SCONOSCIUTO")
+
+```
+
+Eliminiamo adesso RT sotto e sopra 3 sd media ciascun partecipante e condizione:
+
+```{r, echo=FALSE}
+
+soggetti<-unique(df_go_acc$id_subj)
+ordine<-unique(df_go_acc$block_order)
+n_print <- 0
+max_print <- 10 
+
+df_go_pulito<-data.frame()
+numero_totale_out<-0
+for(s in soggetti){
+  for(i in ordine){
+    df_tr<-df_go_acc[df_go_acc$id_subj==s & df_go_acc$block_order==i,]
+    media<-mean(df_tr$rt,na.rm=T)
+    ds<-sd(df_tr$rt,na.rm=T)
+    lower<-media-3*ds
+    high<-media+3*ds
+    
+    df_clean <- df_tr[df_tr$rt >= lower & df_tr$rt <= high, ]
+    n_out<-nrow(df_tr) - nrow(df_clean)
+    numero_totale_out <- numero_totale_out + n_out
+  
+    
+     # stampa solo i primi `max_print` messaggi
+    if (n_out > 0 && n_print < max_print) {
+      cat("Soggetto", s, "- Blocco", i, ": eliminati", n_out, "outlier\n")
+      n_print <- n_print + 1
+    }
+    
+    
+    
+    df_go_pulito <-  rbind(df_go_pulito,df_clean)
+    }
+  
+}
+cat(head("Totale outlier eliminati:", numero_totale_out, "\n"))
+df_go_pulito$block_order<-NULL
+
+```
+
+Mediamente è stata eliminata una osservazione per soggetto.
+
+```{r, echo=FALSE}
+
+
+# # Calcola media e sd
+ media <- tapply(df_go_pulito$rt, df_go_pulito$ordine, mean)
+ dev_std <- tapply(df_go_pulito$rt, df_go_pulito$ordine, sd)
+# 
+# # Arrotonda a una cifra decimale
+ media <- round(media, 3)
+ dev_std <- round(dev_std, 3)
+# # Crea tabella
+ tabella <- data.frame(
+   Condizione = names(media),
+   Media_RT = as.numeric(media),
+   SD_RT = as.numeric(dev_std),
+   row.names = NULL
+ )
+#  Visualizza con knitr::kable
+ knitr::kable(tabella)
+# 
+
+
+```
+
+Visualizziamo gli RT delle due condizioni
+
+```{r, echo=FALSE}
+#grafico
+library(ggplot2)
+
+ggplot(df_go_acc, aes(x = rt, fill = ordine, color = ordine)) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values = c("TU" = "cyan", "SCONOSCIUTO" = "salmon")) +
+  scale_color_manual(values = c("TU" = "cyan4", "SCONOSCIUTO" = "red3")) +
+  labs(
+    x = "RT",
+    y = "Densità",
+    fill = NULL,
+    color = NULL,
+    title = "RT Go-TU vs Go-SCONOSCIUTO"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    legend.position = "right"
+  )
+
+```
+
+```{r,include=FALSE}
+df_go_pulito$ordine <- factor(df_go_pulito$ordine, levels = c("SCONOSCIUTO", "TU"))
+df_go_pulito$group  <- factor(df_go_pulito$group,  levels = c("CTRL", "HSAM"))
+library(brms)
+
+form<-bf(rt~ordine*group + (1+ordine|id_subj),
+         family = Gamma(link = "log"))
+
+
+myPRIORS <- c(
+  set_prior("student_t(3, 0, 1)", class = "Intercept"),
+  
+  set_prior( paste0("student_t(3, 0, .08)"), class = "b", 
+             coef = "ordineTU"),
+  set_prior( paste0("student_t(3, 0, .08)"), class = "b", 
+             coef = "groupHSAM"),
+  #set_prior( paste0("student_t(3, 0, .0055)"), class = "b", 
+  set_prior( paste0("student_t(3, 0, .08)"), class = "b", 
+             coef = "ordineTU:groupHSAM"),
+  set_prior( paste0("student_t(3, 0, 1)"), class = "sd" ),
+  set_prior(paste0("gamma(17, 34)"), class = "shape"))
+
+# Fit solo se non esiste già
+if (!file.exists("fit_go_bayes")) {
+  fit_bayes <- brm(
+    formula = form,
+    data = df_go_pulito,
+    prior = myPRIORS,
+    chains = 4,
+    cores = parallel::detectCores(),
+    iter = 4000,
+    warmup = 1000,
+    seed = 1,
+    control = list(adapt_delta = 0.99)
+  )
+  saveRDS(fit_bayes, file = "fit_go_bayes.rds")
+} else {
+  fit_bayes <- readRDS("fit_go_bayes")
+}
+
+```
+
+Adesso fittiamo il modello:
+
+```{r, eval=FALSE, echo=TRUE}
+
+form<-bf(rt~ordine*group + (1+ordine|id_subj),
+         family = Gamma(link = "log"))
+
+myPRIORS <- c(
+  set_prior("student_t(3, 0, 1)", class = "Intercept"),
+  
+  set_prior( paste0("student_t(3, 0, .08)"), class = "b", 
+             coef = "ordineTU"),
+  set_prior( paste0("student_t(3, 0, .08)"), class = "b", 
+             coef = "groupHSAM"),
+  #set_prior( paste0("student_t(3, 0, .0055)"), class = "b", 
+  set_prior( paste0("student_t(3, 0, .08)"), class = "b", 
+             coef = "ordineTU:groupHSAM"),
+  set_prior( paste0("student_t(3, 0, 1)"), class = "sd" ),
+  set_prior(paste0("gamma(17, 34)"), class = "shape"))
+
+
+fit_bayes<- brm(
+  formula = form,
+  data = df_go_pulito,
+  prior = myPRIORS,
+  chains = 4,
+  cores = parallel::detectCores(),
+  iter = 4000,
+  warmup = 1000,
+  seed = 1,
+  control = list(adapt_delta = 0.99)
+)
+
+```
+
+```{r}
+summary(fit_bayes, prob=.9)
+pp_check(fit_bayes, ndraws = 100)
+posteriori <- as.data.frame(fit_bayes)
+b3 <- posteriori$`b_ordineTU:groupHSAM`
+b1<- posteriori$`b_ordineTU`
+```
+
+Il posterior predictive check mostra che il modello riesce a riprodurre bene i dati osservati. Osservando i parametri possiamo vedere che B1, ha una stima negativa pari a −0.04, con un intervallo di credibilità al 90% che va da −0.07 a −0.01. Data la posterior (figura in basso), è possibile calcolare la probabilità a posteriori che il parametro sia negativo o che sia postivo.
+
+```{r}
+post_b1_go<-plot(fit_bayes,variable="b_ordineTU")
+area_pos_b1<-mean(b1>0)
+
+area_neg_b1<-mean(b1<0)
+
+```
+
+La probabilità che sia negativo è di:
+
+```{r}
+area_neg_b1
+
+```
+
+Mentre la prob. a posteriori che sia positivo è di:
+
+```{r}
+area_pos_b1
+```
+
+Sulla base di queste informazioni possiamo dichiarare che date le nostre posterior, è estremamente più probabile che, i partecipanti rispondono più rapidamente nella condizione TU rispetto a quella SCONOSCIUTO.
+
+Analogamente il parametro B3 di interazione, mostra una stima positiva di 0.03, ma l’intervallo di credibilità comprende lo zero (da −0.01 a 0.08). Andando a vedere la posterior (grafico sotto) si può poi calcolare la probabilità a posteriori che il parametro sia dentro l'intervallo nullo di +-10ms, e la probabilità che sia positivo o negativo.
+
+```{r}
+post_b3_go<-plot(fit_bayes, pars="ordineTU:groupHSAM")
+
+area_pos_b3<-mean(b3>0)
+
+area_neg_b3<-mean(b3<0)
+
+```
+
+La probabilità che B3 sia negativo è di:
+
+```{r,echo: false}
+area_neg_b3
+```
+
+Mentre la prob. a posteriori che B3 sia positivo è di:
+
+```{r}
+area_pos_b3
+```
+
+L'intervallo nullo (NI) di B3 di+-10ms è compreso tra \[-0.020 ; 0.020\] e la prob a posteriori che il parametro caschi in tale intervallo è di:
+
+```{r}
+area_NI <- mean(b3 > -0.020 & b3 <0.020)
+area_NI
+```
+
+Per B3 avevamo scelto come prior una student_t(3, 0, .08). La prob. a priori che B3 si trovasse nel NI era di
+
+```{r}
+# Parametri della prior
+df <- 3
+location <- 0
+scale <- 0.08
+
+# Intervallo nullo
+lower <- -0.02
+upper <-  0.02
+
+# Calcola la probabilità che beta3 cada nel ROPE
+prob_in_rope <- pt((upper - location)/scale, df) - pt((lower - location)/scale, df)
+prob_in_rope
+
+```
+
+Quindi possiamo concludere che aggiornando le prior con i dati raccolti, la prob. che B3 cada nel NI è aumentata di
+
+```{r}
+area_NI-prob_in_rope 
+```
+
+I dati hanno *aumentato* l'evidenza a favore dell'effetto nullo rispetto alla prior.
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Calcolo densità
+dens <- density(b3)
+df_dens <- data.frame(x = dens$x, y = dens$y)
+
+# Intervallo nullo (NI: ±0.02)
+df_null <- df_dens %>% filter(x > -0.02 & x < 0.02)
+
+# Intervallo positivo (β₃ > 0)
+df_pos <- df_dens %>% filter(x > 0)
+
+# Plot
+ggplot(df_dens, aes(x = x, y = y)) +
+  geom_area(data = df_pos, aes(x = x, y = y), fill = "lightblue", alpha = 0.5) +
+  geom_area(data = df_null, aes(x = x, y = y), fill = "red", alpha = 0.6) +
+  geom_line(color = "black", size = 0.6) +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey30") +
+
+  # Etichetta area nulla: spostata a sinistra (x = -0.03)
+  annotate("label", x = -0.03, y = max(df_dens$y) + 0.8,
+           label = paste0("P(-0.02 < β3 < 0.02) = ", round(area_NI, 3)),
+           fill = "red", color = "white", size = 4, label.size = NA) +
+
+  # Etichetta area positiva: spostata più a sinistra (x = 0.07)
+  annotate("label", x = 0.07, y = max(df_dens$y) + 0.8,
+           label = paste0("P(β3 > 0) = ", round(area_pos_b3, 3)),
+           fill = "lightblue", color = "black", size = 4, label.size = NA) +
+
+  labs(title = expression("Distribuzione a Posteriori di " * beta[3]),
+       x = expression(beta[3] * " (interazione TU × Gruppo)"),
+       y = "Densità") +
+  theme_minimal(base_size = 14) +
+  coord_cartesian(ylim = c(0, max(df_dens$y) + 1.5))
+
+
+```
+
+Ho fittato anche il modello frequentista per vedere eventuale convergenze/divergenze:
+
+```{r}
+
+library(glmmTMB)
+
+if (!file.exists("fit_gamma_freq")) {
+  fit_gamma <- glmmTMB(
+  rt ~ ordine * group + (1 + ordine | id_subj),
+  data = df_go_pulito,
+  family = Gamma(link = "log")
+)
+  saveRDS(fit_bayes, file = "fit_gamma_freq.rds")
+} else {
+  fit_gamma <- readRDS("fit_gamma_freq")
+}
+summary(fit_gamma)
+```

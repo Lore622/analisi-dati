@@ -1,0 +1,19 @@
+project:
+  type: website
+
+website:
+  title: "Analisi dati"
+  navbar:
+    left:
+      - text: "Matching"
+        file: analisi_matching.qmd
+      - text: "Go/No-Go"
+        file: analisi_go_nogo.qmd
+      - text: "Power"
+        file: power_go_nogo.qmd
+
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    theme: flatly

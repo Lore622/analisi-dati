@@ -1,0 +1,256 @@
+---
+title: "HSAM: Analisi Matching Task"
+author: "Lorenzo Atzeni"
+format:
+  html:
+    code: false  
+    theme: flatly
+    self-contained: true
+editor: visual
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+### Pre-processing, data cleaning
+
+Ho creato un dataframe con solo trial eseguiti correttamente (accuratezza=1) della condizione matching. Inoltre ho escluso tempi di reazione estremi, definiti come valori oltre ±3 deviazioni standard dalla media per ciascun partecipante e condizione. Con questo criterio sono stati rimosse 16 osservazioni, meno di una per partecipante.
+
+```{r, echo=FALSE}
+rm(list = ls())
+
+df_m <- read.csv("matching_task_unificato.csv", stringsAsFactors = FALSE)
+df <- df_m[df_m$acc == 1 & (df_m$identity == "matching SCONOSCIUTO" | df_m$identity == "matching TU"), ]
+df$identity_label <- ifelse(df$identity == "matching TU", "TU", "SCONOSCIUTO")
+
+pulizia <- function(df){
+  df_cleaned <- data.frame()
+  soggetti <- unique(df$id_subj)
+  condizioni <- unique(df$identity_label)
+  for (s in soggetti) {
+    for (c in condizioni) {
+      sottoinsieme <- df[df$id_subj == s & df$identity_label == c, ]
+      if (nrow(sottoinsieme) == 0) next
+      media_rt <- mean(sottoinsieme$rt, na.rm = TRUE)
+      sd_rt <- sd(sottoinsieme$rt, na.rm = TRUE)
+      lower <- media_rt - 3 * sd_rt
+      upper <- media_rt + 3 * sd_rt
+      sottoinsieme_pulito <- sottoinsieme[sottoinsieme$rt >= lower & sottoinsieme$rt <= upper, ]
+      df_cleaned <- rbind(df_cleaned, sottoinsieme_pulito)
+    }
+  }
+  return(df_cleaned)
+}
+
+df_pulito <- pulizia(df)
+df_pulito$identity_label <- factor(df_pulito$identity_label, levels = c("SCONOSCIUTO", "TU"))
+df_pulito$group <- factor(df_pulito$group, levels = c("CTRL", "HSAM"))
+```
+
+```{r}
+
+# Calcola media e sd
+media <- tapply(df_pulito$rt, df_pulito$identity_label, mean)
+dev_std <- tapply(df_pulito$rt, df_pulito$identity_label, sd)
+
+# Arrotonda a una cifra decimale
+media <- round(media, 3)
+dev_std <- round(dev_std, 3)
+# Crea tabella
+tabella <- data.frame(
+  Condizione = names(media),
+  Media_RT = as.numeric(media),
+  SD_RT = as.numeric(dev_std),
+  row.names = NULL
+)
+
+# Visualizza con knitr::kable
+knitr::kable(tabella)
+
+```
+
+```{r}
+library(ggplot2)
+
+# Mappa per etichetta leggibile
+df$identity_label <- ifelse(df$identity == "matching TU", "TU", "SCONOSCIUTO")
+
+# Grafico con densità sovrapposte
+ggplot(df, aes(x = rt, fill = identity_label, color = identity_label)) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values = c("TU" = "cyan", "SCONOSCIUTO" = "salmon")) +
+  scale_color_manual(values = c("TU" = "cyan4", "SCONOSCIUTO" = "red3")) +
+  labs(
+    x = "RT",
+    y = "Densità",
+    fill = NULL,
+    color = NULL,
+    title = "RT Matching TU vs SCONOSCIUTO"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "right")
+
+```
+
+Adesso fittiamo il modello con le stesse prior usate per la power analisi
+
+```{r,include=FALSE}
+library(brms)
+
+formula_brm <- bf(rt ~ identity_label * group + (1 + identity_label | id_subj), family = Gamma(link = "log"))
+
+priori <- c(
+  set_prior("student_t(3, 0, 1)", class = "Intercept"),
+  set_prior("student_t(3, 0, 0.08)", class = "b", coef = "identity_labelTU"),
+  set_prior("student_t(3, 0, 0.08)", class = "b", coef = "groupHSAM"),
+  set_prior("student_t(3, 0, 0.08)", class = "b", coef = "identity_labelTU:groupHSAM"),
+  set_prior("student_t(3, 0, 1)", class = "sd"),
+  set_prior("gamma(17,17)", class = "shape")
+)
+
+if (!file.exists("fit_bayes_no_outlier.rds")) {
+  fit_no_outlier <- brm(
+    formula = formula_brm,
+    data = df_pulito,
+    prior = priori,
+    chains = 4,
+    cores = parallel::detectCores(),
+    iter = 4000,
+    warmup = 1000,
+    seed = 1,
+    control = list(adapt_delta = 0.99)
+  )
+  saveRDS(fit_no_outlier, file = "fit_bayes_no_outlier.rds")
+} else {
+  fit_no_outlier <- readRDS("fit_bayes_no_outlier.rds")
+}
+
+```
+
+```{r, eval=FALSE, echo=TRUE}
+
+formula_brm <- bf(rt ~ identity_label * group + (1 + identity_label | id_subj), family = Gamma(link = "log"))
+
+priori <- c(
+  set_prior("student_t(3, 0, 1)", class = "Intercept"),
+  set_prior("student_t(3, 0, 0.08)", class = "b", coef = "identity_labelTU"),
+  set_prior("student_t(3, 0, 0.08)", class = "b", coef = "groupHSAM"),
+  set_prior("student_t(3, 0, 0.08)", class = "b", coef = "identity_labelTU:groupHSAM"),
+  set_prior("student_t(3, 0, 1)", class = "sd"),
+  set_prior("gamma(17,17)", class = "shape")
+)
+
+fit_no_outlier <- brm(
+  formula = formula_brm,
+  data = df_pulito,
+  prior = priori,
+  chains = 4,
+  cores = parallel::detectCores(),
+  iter = 4000,
+  warmup = 1000,
+  seed = 1,
+  control = list(adapt_delta = 0.99)
+)
+```
+
+```{r}
+summary(fit_no_outlier, prob = 0.90)
+pp_check(fit_no_outlier, ndraws = 100)
+posteriori <- as.data.frame(fit_no_outlier)
+b3 <- posteriori$`b_identity_labelTU:groupHSAM`
+b1<- posteriori$`b_identity_labelTU`
+```
+
+Il coefficiente β₁ rappresenta la **differenza in RT tra stimoli associati al sé (“TU”) e quelli sconosciuti**, nel gruppo di controllo (CTRL). L' intervallo di credibilità al 90% va da **–0.29 a –0.17**, interamente negativo, evidenziando che i **tempi di reazione sono inferiori per gli stimoli associati al sè.** Più nel dettaglio, la posterior del parametro è interamente spostata a sinistra dello zero. L’evidenza è molto forte per un **self-prioritization effect nei controlli**, coerente con la letteratura.
+
+```{r, echo=FALSE}
+post_b1<-plot(fit_no_outlier, variable = "b_identity_labelTU")
+
+```
+
+Per Il coefficiente β3 di interazione l'intervallo di credibilità contiene lo zero. Tuttavia siccome abbiamo la prior del parametro possiamo fare considerazioni aggiuntive che vanno oltre la significatività o non significatività statistica.
+
+```{r, echo=FALSE}
+post_b3<-plot(fit_no_outlier, pars = "identity_labelTU:groupHSAM")
+
+```
+
+La probabilità a posteriori che b3 sia positivo:
+
+```{r, echo=FALSE}
+area_b3_positive <- mean(b3 > 0)
+area_b3_positive
+```
+
+La probabilità a posteriori che b3 sia nell'area che avevamo definito target ovvero tra 50 e 100ms, (b3 \> -0.14 & b3 \< -0.07):
+
+```{r, echo=FALSE}
+area_target <- mean(b3 > -0.14 & b3 < -0.07)
+area_target
+```
+
+La probabilità a posteriori che b3 cada nella ROPE, nel Null Intervall di +-10ms, (b3 \> -0.013 & b3 \< 0.013):
+
+```{r, echo=FALSE}
+area_b3_NI <- mean(b3 > -0.013 & b3 < 0.013)
+area_b3_NI
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+dens <- density(b3)
+df_dens <- data.frame(x = dens$x, y = dens$y)
+df_target <- df_dens %>% filter(x > -0.14 & x < -0.07)
+df_null <- df_dens %>% filter(x > -0.013 & x < 0.013)
+
+ggplot(df_dens, aes(x = x, y = y)) +
+  geom_area(data = df_target, aes(x = x, y = y), fill = "lightgreen", alpha = 0.8) +
+  geom_area(data = df_null, aes(x = x, y = y), fill = "red", alpha = 0.6) +
+  geom_line(color = "black", size = 0.6) +
+  annotate("label", x = -0.18, y = max(df_dens$y) + 0.4,
+           label = paste0("P(-0.14 < β3 < -0.07) = ", round(area_target, 3)),
+           fill = "lightgreen", color = "black", size = 4, label.size = NA) +
+  annotate("label", x = 0.045, y = max(df_dens$y) + 0.4,
+           label = paste0("P(-0.013 < β3 < 0.013) = ", round(area_b3_NI, 3)),
+           fill = "red", color = "white", size = 4, label.size = NA) +
+  labs(title = expression("Posterior di " * beta[3] * " (interazione I × G)"),
+       x = expression(beta[3]),
+       y = "Densità") +
+  theme_minimal(base_size = 14) +
+  coord_cartesian(ylim = c(0, max(df_dens$y) + 1.5))
+```
+
+Ho fatto anche analisi frequentista per vedere se i rislutati convergevano.
+
+```{r, echo=FALSE}
+# Carica libreria
+library(glmmTMB)
+
+# Verifica se esiste già il modello salvato
+if (!file.exists("fit_glmmTMB_no_outlier.rds")) {
+  # Rimuovi colonna match_id se presente
+  if ("match_id" %in% colnames(df_pulito)) {
+    df_pulito$match_id <- NULL
+  }
+
+  # Stima modello
+  fit_gamma_no_outlier <- glmmTMB(
+    rt ~ identity_label * group + (1 + identity_label | id_subj),
+    data = df_pulito,
+    family = Gamma(link = "log")
+  )
+
+  # Salva modello
+  saveRDS(fit_gamma_no_outlier, file = "fit_glmmTMB_no_outlier.rds")
+} else {
+  fit_gamma_no_outlier <- readRDS("fit_glmmTMB_no_outlier.rds")
+}
+
+# Mostra il summary (senza mostrare il codice)
+summary(fit_gamma_no_outlier)
+
+```
+
+B1 viene significativo con p=4.67e-13, b3 invece non risulta significativo.

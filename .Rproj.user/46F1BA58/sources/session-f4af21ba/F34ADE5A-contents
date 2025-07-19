@@ -1,0 +1,284 @@
+---
+title: "HSAM: Power Go-NoGo"
+author: "Lorenzo Atzeni"
+format:
+  html:
+    code: false  
+    theme: flatly
+    self-contained: true
+editor: visual
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+Scegliamo i parametri:
+
+```{r, echo=TRUE}
+
+b0 <- -0.7  
+b1 <- 0.183   
+b2 <- 0      
+b3 <- 0.11
+
+```
+
+B0=-0.7 –\> (exp(−0.7))= 500 ms (RT gruppo di controllo nella condizione SCONOSCIUTO)
+
+B1=0.183 -\>(exp(0.183)) =1.2 incremento RT 20% stimoli associati al sè.
+
+B2--\>nullo-\> No differenze tra gruppi in RT nella condizione SCONOSCIUTO
+
+B3=0.11-\>(exp(0.11)) -\> 1.11-\>per gli HSAM la condizione TU determina un aumento ulteriore dei tempi di reazione dell’11% rispetto a quanto osservato nei controlli, circa 55ms.
+
+```{r}
+N=50
+n_trial=100
+b0 <- -0.7   
+b1 <- 0.183   
+b2 <- 0       
+b3 <- 0.11
+
+
+df <- expand.grid(trial = 1:n_trial, id = 1:N)
+df <- df[, c("id", "trial")]
+
+#inseriamo le condizioni
+df$G<-ifelse(df$id <= N/2,0,1)
+df$I<-ifelse(df$trial<51,0,1)
+
+#parametri:
+df$b0<-rep(b0,nrow(df))
+df$b1<-rep(b1,nrow(df))
+df$b2<-rep(b2,nrow(df))
+df$b3<-rep(b3,nrow(df))
+
+#inseriamo intercetta e sl
+```
+
+Inseriamo intercetta e slope random con r=.2
+
+```{r, echo=TRUE}
+library(MASS)
+# matrice di covarianza con correlazione 0.25
+Sigma <- matrix(c(0.01, 0.0025,
+                  0.0025, 0.01), nrow = 2)
+rand_eff <- mvrnorm(n = N, mu = c(0, 0), Sigma = Sigma)
+b0i <- rand_eff[, 1]
+b1i <- rand_eff[, 2]
+
+df$b0i <- b0i[df$id]
+df$b1i <- b1i[df$id]
+
+```
+
+Calcoliamo rate usando la formula inversa shape=mu/rate
+
+```{r, echo=TRUE}
+shape=17
+log_mu <- with(df, b0 + b1*I + b2*G + b3*I*G +b0i + b1i * I)
+mu <- exp(log_mu)
+rate<-mu/shape
+
+df$y  <- rgamma(nrow(df), shape = shape, scale = mu / shape)
+
+
+```
+
+```{r}
+summary(df$y)
+hist(df$y, probability = TRUE, col = "lightgray", border = "white",
+     main = "")
+# Sovrapponi la curva di densità stimata
+lines(density(df$y), col = "red", lwd = 2)
+```
+
+Facciamo una prova e fittiamo il modello con n=10000 per vedere se stima bene i parametri.
+
+```{r}
+library(glmmTMB)
+
+if(!file.exists("power fit")){ 
+fit_power <- glmmTMB(
+  y ~ I* G+ (1 + I | id),
+  data = df,
+  family = Gamma(link = "log")
+)
+saveRDS(fit_power, file = "power fit")
+} else {
+  fit_power <- readRDS("power fit")
+}
+summary(fit_power)
+
+
+```
+
+Con `n = 10000` il modello riesce a stimare correttamente i parametri. Passiamo ora alla scelta delle prior.
+
+Poiché in letteratura esiste un solo studio simile al nostro (*Dalmaso et al., 2019*), è opportuno adottare **prior scettiche**, cioè centrate sullo zero e con varianza ridotta, come suggerito da *Kruschke e Liddell (2018)*. Tuttavia, con campioni più piccoli, questo approccio rischia di spingere la stima di β₃ costantemente verso lo zero, limitando l’inferenza.
+
+Per ovviare a questo problema, come già fatto nell'articolo preparato per il GIP, è stata scelta una **distribuzione t di Student con 3 gradi di libertà**, media zero e deviazione standard pari a **0.08**. Questa specifica consente di rappresentare un’ampia gamma di valori plausibili per l’effetto, pur mantenendo una maggiore densità in prossimità dello zero.
+
+In particolare, questa prior **ammette che l’interazione tra identità e gruppo possa produrre una variazione del tempo di reazione compresa tra circa −30% e +40%**, ma conserva un atteggiamento cauto rispetto all'evidenza. Include comodamente anche il valore simulato come reale, che corrisponde a un effetto del **+11%**. In questo modo, si ottiene una stima credibile che incorpora l’incertezza iniziale **senza compromettere l’identificabilità del modello**.
+
+```{r, echo=TRUE}
+library(brms)
+
+#priorB3<-a prior ammette che l’effetto differenziale possa andare da circa –30 % a +40 %, con maggior densità vicino a 0. 
+#Contiene comodamente il valore vero simulato (+11 %).
+  myPRIORS <- c(
+    set_prior("student_t(3, 0, 1)", class = "Intercept"),
+    
+  set_prior( paste0("student_t(3, 0, .08)"), class = "b", 
+             coef = "I"),
+  set_prior( paste0("student_t(3, 0, .08)"), class = "b", 
+             coef = "G"),
+  #set_prior( paste0("student_t(3, 0, .0055)"), class = "b", 
+  set_prior( paste0("student_t(3, 0, .08)"), class = "b", 
+             coef = "I:G"),
+  set_prior( paste0("student_t(3, 0, 1)"), class = "sd" ),
+  set_prior(paste0("gamma(", shape, ", 34)"), class = "shape"))
+```
+
+```{r}
+library(ggplot2)
+
+# Parametri prior
+df <- 3
+loc <- 0
+scale <- 0.08
+
+# Intervallo nullo ±10ms log-scale
+null_width <- log((500 + 10) / 500)  # ≈ 0.0198
+
+x_vals <- seq(-0.3, 0.3, length.out = 1000)
+prior_density <- dt((x_vals - loc) / scale, df = df) / scale
+df_prior <- data.frame(x = x_vals, y = prior_density)
+
+ggplot(df_prior, aes(x = x, y = y)) +
+  geom_line(color = "black", size = 1) +
+  geom_vline(xintercept = 0.11, color = "black", linetype = "dashed", size = 0.5) +
+  geom_area(data = subset(df_prior, x >= -null_width & x <= null_width),
+            aes(x = x, y = y), fill = "red", alpha = 0.5) +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey40") +
+  annotate("text", x = 0.11, y = max(df_prior$y),
+           label = "β3 = 0.11", hjust = -0.1, color = "black") +
+  labs(title = expression("Distribuzione a priori di " * beta[3]),
+       x = expression(beta[3]),
+       y = "Densità") +
+  theme_minimal(base_size = 14)
+
+
+```
+
+la probabilità che B3 cada nell intervallo nullo è di:
+
+```{r}
+# Parametri della prior
+df <- 3
+loc <- 0
+scale <- 0.08
+
+# Intervallo nullo: ±10 ms attorno a baseline di 500 ms
+delta_ms <- 10
+baseline <- 500
+log_null <- log((baseline + delta_ms) / baseline)  # ≈ 0.0198
+
+# Probabilità che beta3 cada nel null interval
+p_null <- pt((log_null - loc) / scale, df = df) - 
+          pt((-log_null - loc) / scale, df = df)
+
+# Probabilità che beta3 ≥ 0.11
+p_geq_011 <- 1 - pt((0.11 - loc) / scale, df = df)
+
+# Visualizza i risultati
+p_null
+
+
+```
+
+mentre che sia maggiore uguale a .11 è di:
+
+```{r}
+p_geq_011
+```
+
+**Algoritmo calcolo power:** La potenza viene calcolata come il rapporto tra il numero di volte in cui l'intervallo di credibilità del parametro b3 non include lo zero sul totale numero di iterazioni.
+
+```{r, eval=FALSE,echo=TRUE}
+BE <- c(-0.7, 0.183, 0, 0.11)
+
+LEVEL <- .90
+
+PROBS <- c((1 - LEVEL) / 2, 1 - (1 - LEVEL) / 2)
+
+#sample_size <- c(20, 50, 70, 100, 120, 150)
+sample_size <- c(20, 50, 70, 100, 120)
+n_sim <- 100
+n_trial <- 100
+shape <- 17
+Sigma <- matrix(c(0.01, 0.0025, 0.0025, 0.01), 2, 2)
+SCENARIO <- "go_no_go"
+datadir <- "./"  # o dove vuoi salvare i file
+LETTER <- "A"
+
+form <- bf(y ~ I * G + (1 + I | id), family = Gamma(link = "log"))
+
+
+# Funzione per simulare i dati
+for (n in sample_size) {
+  EXP2 <- OBS <- NULL
+  for (b in 1:n_sim) {
+    cat(paste0("n = ", n, " (", b, "/", n_sim, ")\n"))
+    
+    df <- expand.grid(trial = 1:n_trial, id = 1:n)
+    df$G <- ifelse(df$id <= n / 2, 0, 1)
+    df$I <- ifelse(df$trial <= (n_trial / 2), 0, 1)
+    
+    rand_eff <- mvrnorm(n = n, mu = c(0, 0), Sigma = Sigma)
+    b0i <- rand_eff[, 1]
+    b1i <- rand_eff[, 2]
+    
+    df$b0i <- b0i[df$id]
+    df$b1i <- b1i[df$id]
+    
+    log_mu <- with(df, BE[1] + BE[2]*I + BE[3]*G + BE[4]*I*G + b0i + b1i * I)
+    mu <- exp(log_mu)
+    df$y <- rgamma(nrow(df), shape = shape, scale = mu / shape)
+    
+    if (b == 1) {
+      base_fit <- brm(formula = form, data = df, prior = myPRIORS,
+                      chains = 4, iter = 4000, warmup = 1000,
+                      control = list(adapt_delta = 0.99),
+                      cores = parallel::detectCores(), refresh = 0)
+    }
+    
+    fit <- update(base_fit, newdata = df, recompile = FALSE, refresh = 0)
+    
+    converged <- all(rhat(fit) <= 1.05)
+    
+    est <- data.frame(fixef(fit, probs = PROBS))
+    
+    est$detected <- FALSE  # inizializza tutta la colonna
+    ci_b3 <- est["I:G", c("Q5", "Q95")]  #CI_low, CI_high
+    est["I:G", "detected"] <- (ci_b3[1] > 0 | ci_b3[2] < 0) #CI_low>0  CI_high<0
+    est$converged <- converged
+    est$par <- rownames(est)
+    est$n <- n
+    est$iter <- b
+    est$scenario <- SCENARIO
+    
+    EXP2 <- rbind(EXP2, est)
+  }
+  
+  save(EXP2, file = paste0(datadir, "power_sim_", SCENARIO, "_n", n, LETTER, ".rda"))
+}
+
+
+EXP2_b3 <- subset(EXP2, par == "I:G"& converged == TRUE)
+power_by_n <- aggregate(detected ~ n, data = EXP2_b3, FUN = mean)
+print(power_by_n)
+
+
+```
