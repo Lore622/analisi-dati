@@ -128,10 +128,11 @@ ggplot(df_pulito, aes(x = rt, fill = identity_label, color = identity_label)) +
 df_tu <- df_pulito[df_pulito$identity_label == "TU", ]
 
 # Grafico: RT matching-TU confronto tra gruppi
+
 ggplot(df_tu, aes(x = rt, fill = group, color = group)) +
   geom_density(alpha = 0.4) +
-  scale_fill_manual(values = c("HSAM" = "steelblue", "CNTRL" = "orange")) +
-  scale_color_manual(values = c("HSAM" = "steelblue4", "CNTRL" = "darkorange")) +
+  scale_fill_manual(values = c("HSAM" = "steelblue", "CTRL" = "darkgrey")) +
+  scale_color_manual(values = c("HSAM" = "steelblue4", "CTRL" = "darkgrey")) +
   labs(
     x = "RT",
     y = "Densità",
@@ -141,6 +142,7 @@ ggplot(df_tu, aes(x = rt, fill = group, color = group)) +
   ) +
   theme_minimal(base_size = 13) +
   theme(legend.position = "right")
+
 ```
 
 Adesso fittiamo il modello con le stesse prior usate per la power analisi
