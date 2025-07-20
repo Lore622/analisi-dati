@@ -89,8 +89,7 @@ df$y  <- rgamma(nrow(df), shape = shape, scale = mu / shape)
 ```{r}
 summary(df$y)
 hist(df$y, probability = TRUE, col = "lightgray", border = "white",
-     main = "",
-     xlab = "Valori", ylab = "Densità")
+     main = "")
 # Sovrapponi la curva di densità stimata
 lines(density(df$y), col = "red", lwd = 2)
 ```
@@ -283,3 +282,7 @@ print(power_by_n)
 
 
 ```
+
+::: {style="text-align: left; margin-top: 2em;"}
+<a href="analisi_go_nogo.html" class="btn btn-outline-secondary">← Go/No-Go</a>
+:::

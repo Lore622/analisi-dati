@@ -15,7 +15,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
 ### Pre-processing, data cleaning
 
-Ho creato un dataframe con solo trial eseguiti correttamente (accuratezza=1) della condizione matching. Inoltre ho escluso tempi di reazione estremi, definiti come valori oltre ±3 deviazioni standard dalla media per ciascun partecipante e condizione. Con questo criterio sono stati rimosse 16 osservazioni, meno di una per partecipante.
+Ho creato un dataframe con solo trial eseguiti correttamente (accuratezza=1) della condizione matching. Inoltre ho escluso tempi di reazione estremi, definiti come valori oltre ±3 deviazioni standard dalla media per ciascun partecipante e condizione. Con questo criterio sono stati rimosse 16 osservazioni, meno di una per partecipante. Le tabelle seguenti riportano i tempi di reazione (RT) medi relativi alle due condizioni, rispettivamente indipendentemente dal gruppo (prima tabella) e distinti per ciascun gruppo (seconda e terza tabella).
 
 ```{r, echo=FALSE}
 rm(list = ls())
@@ -59,7 +59,7 @@ media <- round(media, 3)
 dev_std <- round(dev_std, 3)
 # Crea tabella
 tabella <- data.frame(
-  Condizione = names(media),
+  Condizione_Totale = names(media),
   Media_RT = as.numeric(media),
   SD_RT = as.numeric(dev_std),
   row.names = NULL
@@ -68,16 +68,48 @@ tabella <- data.frame(
 # Visualizza con knitr::kable
 knitr::kable(tabella)
 
+
+df_hsam<-subset(df_pulito,df_pulito$group=="HSAM",select=c(rt,id_subj,group,acc,identity_label))
+media_hsam<-tapply(df_hsam$rt,df_hsam$identity_label,mean)
+sd_hsam<-tapply(df_hsam$rt,df_hsam$identity_label,sd)
+
+media_hsam<-round(media_hsam,3)
+sd_hsam <- round(sd_hsam, 3)
+
+tabella_hsam <- data.frame(
+  Condizione_HSAM = names(media_hsam),
+  Media_RT_HSAM = as.numeric(media_hsam),
+  SD_RT_HSAM = as.numeric(sd_hsam),
+  row.names = NULL
+)
+
+knitr::kable(tabella_hsam)
+
+df_cntrl<-subset(df_pulito,df_pulito$group=="CTRL",select=c(rt,id_subj,group,acc,identity_label))
+media_cntrl<-tapply(df_cntrl$rt,df_cntrl$identity_label,mean)
+sd_cntrl<-tapply(df_cntrl$rt,df_cntrl$identity_label,sd)
+
+media_cntrl<-round(media_cntrl,3)
+sd_cntrl <- round(sd_cntrl, 3)
+
+tabella_cntrl <- data.frame(
+  Condizione_CNTRL = names(media_cntrl),
+  Media_RT_CNTRL = as.numeric(media_cntrl),
+  SD_RT_CNTRL = as.numeric(sd_cntrl),
+  row.names = NULL
+)
+
+knitr::kable(tabella_cntrl)
 ```
 
 ```{r}
 library(ggplot2)
 
 # Mappa per etichetta leggibile
-df$identity_label <- ifelse(df$identity == "matching TU", "TU", "SCONOSCIUTO")
+df_pulito$identity_label <- ifelse(df_pulito$identity == "matching TU", "TU", "SCONOSCIUTO")
 
 # Grafico con densità sovrapposte
-ggplot(df, aes(x = rt, fill = identity_label, color = identity_label)) +
+ggplot(df_pulito, aes(x = rt, fill = identity_label, color = identity_label)) +
   geom_density(alpha = 0.4) +
   scale_fill_manual(values = c("TU" = "cyan", "SCONOSCIUTO" = "salmon")) +
   scale_color_manual(values = c("TU" = "cyan4", "SCONOSCIUTO" = "red3")) +
@@ -91,6 +123,24 @@ ggplot(df, aes(x = rt, fill = identity_label, color = identity_label)) +
   theme_minimal(base_size = 13) +
   theme(legend.position = "right")
 
+
+# Filtra solo le prove TU
+df_tu <- df_pulito[df_pulito$identity_label == "TU", ]
+
+# Grafico: RT matching-TU confronto tra gruppi
+ggplot(df_tu, aes(x = rt, fill = group, color = group)) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values = c("HSAM" = "steelblue", "CNTRL" = "orange")) +
+  scale_color_manual(values = c("HSAM" = "steelblue4", "CNTRL" = "darkorange")) +
+  labs(
+    x = "RT",
+    y = "Densità",
+    fill = NULL,
+    color = NULL,
+    title = "RT Matching-TU: gruppo HSAM vs CNTRL"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "right")
 ```
 
 Adesso fittiamo il modello con le stesse prior usate per la power analisi
@@ -162,14 +212,14 @@ b3 <- posteriori$`b_identity_labelTU:groupHSAM`
 b1<- posteriori$`b_identity_labelTU`
 ```
 
-Il coefficiente β₁ rappresenta la **differenza in RT tra stimoli associati al sé (“TU”) e quelli sconosciuti**, nel gruppo di controllo (CTRL). L' intervallo di credibilità al 90% va da **–0.29 a –0.17**, interamente negativo, evidenziando che i **tempi di reazione sono inferiori per gli stimoli associati al sè.** Più nel dettaglio, la posterior del parametro è interamente spostata a sinistra dello zero. L’evidenza è molto forte per un **self-prioritization effect nei controlli**, coerente con la letteratura.
+Il posterior predictive check mostra che il modello riproduce correttamente i dati osservati. B1 ha un intervallo di credibilità al 90% interamente negativo che va da –0.29 a –0.17, evidenziando che i tempi di reazione sono inferiori per gli stimoli associati al sè nei controlli (Self-Prioritizing Effect).
 
 ```{r, echo=FALSE}
 post_b1<-plot(fit_no_outlier, variable = "b_identity_labelTU")
 
 ```
 
-Per Il coefficiente β3 di interazione l'intervallo di credibilità contiene lo zero. Tuttavia siccome abbiamo la prior del parametro possiamo fare considerazioni aggiuntive che vanno oltre la significatività o non significatività statistica.
+Per Il coefficiente β3 di interazione l'intervallo di credibilità invece contiene lo zero. Tuttavia siccome abbiamo la prior del parametro possiamo fare considerazioni aggiuntive che vanno oltre la significatività o non significatività statistica.
 
 ```{r, echo=FALSE}
 post_b3<-plot(fit_no_outlier, pars = "identity_labelTU:groupHSAM")
@@ -222,6 +272,10 @@ ggplot(df_dens, aes(x = x, y = y)) +
   coord_cartesian(ylim = c(0, max(df_dens$y) + 1.5))
 ```
 
+Concludendo, sebbene l’intervallo di credibilità al 90% per B3 includa lo zero, l’analisi a posteriori fornisce indicazioni aggiuntive. Solo il 5.7% della distribuzione cade in un intervallo definito nullo (ROPE ±10ms), mentre circa il 45% si colloca in un range compatibile con una differenza di 50–100 ms tra i gruppi nella condizione “TU”. La probabilità che l’effetto sia positivo è bassa (≈ 5%), suggerendo che, qualora esista una differenza, essa è plausibilmente a favore degli HSAM.
+
+Complessivamente, pur in assenza di evidenza conclusiva, i dati suggeriscono una possibile accentuazione dello SPE nei soggetti HSAM. Tuttavia, data l’ampiezza dell’intervallo di credibilità e la sovrapposizione con la regione nulla, l’effetto va considerato incerto e potenzialmente meritevole di ulteriore approfondimento, specialmente in studi con maggiore potenza statistica.
+
 Ho fatto anche analisi frequentista per vedere se i rislutati convergevano.
 
 ```{r, echo=FALSE}
@@ -254,3 +308,7 @@ summary(fit_gamma_no_outlier)
 ```
 
 B1 viene significativo con p=4.67e-13, b3 invece non risulta significativo.
+
+::: {style="text-align: right; margin-top: 2em;"}
+<a href="analisi_go_nogo.html" class="btn btn-primary">Pagina successiva →</a>
+:::

@@ -3,7 +3,6 @@ title: "HSAM: Analisi Go-NoGo"
 author: "Lorenzo Atzeni"
 format:
   html:
-    toc: true
     code: false  # Nasconde completamente il codice (senza freccette)
     theme: flatly
     self-contained: true
@@ -143,16 +142,48 @@ Mediamente è stata eliminata una osservazione per soggetto.
  media <- round(media, 3)
  dev_std <- round(dev_std, 3)
 # # Crea tabella
- tabella <- data.frame(
+ tabella_go <- data.frame(
    Condizione = names(media),
    Media_RT = as.numeric(media),
    SD_RT = as.numeric(dev_std),
    row.names = NULL
  )
 #  Visualizza con knitr::kable
- knitr::kable(tabella)
+ knitr::kable(tabella_go)
 # 
 
+df_go_hsam<-subset(df_go_pulito,df_go_pulito$group=="HSAM")
+media_go_hsam<-tapply(df_go_hsam$rt,df_go_hsam$ordine,mean)
+sd_go_hsam<-tapply(df_go_hsam$rt,df_go_hsam$ordine,sd)
+
+media_go_hsam<-round(media_go_hsam,3)
+sd_go_hsam <- round(sd_go_hsam, 3)
+
+tabella_go_hsam <- data.frame(
+  Condizione_HSAM = names(media_go_hsam),
+  Media_RT_HSAM = as.numeric(media_go_hsam),
+  SD_RT_HSAM = as.numeric(sd_go_hsam),
+  row.names = NULL
+)
+
+knitr::kable(tabella_go_hsam)
+
+df_go_cntrl<-subset(df_go_pulito,df_go_pulito$group=="CTRL")
+media_go_cntrl<-tapply(df_go_cntrl$rt,df_go_cntrl$ordine,mean)
+sd_go_cntrl<-tapply(df_go_cntrl$rt,df_go_cntrl$ordine,sd)
+
+media_go_cntrl<-round(media_go_cntrl,3)
+sd_go_cntrl <- round(sd_go_cntrl, 3)
+
+tabella_go_cntrl <- data.frame(
+  Condizione_CNTRL = names(media_go_cntrl),
+  Media_RT_CNTRL = as.numeric(media_go_cntrl),
+  SD_RT_CNTRL = as.numeric(sd_go_cntrl),
+  row.names = NULL
+)
+
+knitr::kable(tabella_go_cntrl)
+ 
 
 ```
 
@@ -288,7 +319,7 @@ Mentre la prob. a posteriori che sia positivo è di:
 area_pos_b1
 ```
 
-Sulla base di queste informazioni possiamo dichiarare che date le nostre posterior, è estremamente più probabile che, i partecipanti rispondono più rapidamente nella condizione TU rispetto a quella SCONOSCIUTO.
+Sulla base di queste informazioni possiamo dichiarare che date le nostre posterior, è estremamente più probabile che, i partecipanti del gruppo di controllo rispondano più rapidamente nella condizione TU rispetto a quella SCONOSCIUTO.
 
 Analogamente il parametro B3 di interazione, mostra una stima positiva di 0.03, ma l’intervallo di credibilità comprende lo zero (da −0.01 a 0.08). Andando a vedere la posterior (grafico sotto) si può poi calcolare la probabilità a posteriori che il parametro sia dentro l'intervallo nullo di +-10ms, e la probabilità che sia positivo o negativo.
 
@@ -345,6 +376,18 @@ area_NI-prob_in_rope
 ```
 
 I dati hanno *aumentato* l'evidenza a favore dell'effetto nullo rispetto alla prior.
+
+Concludendo, Il parametro di interazione β₃ presenta una stima centrale positiva di 0.03, suggerendo che il vantaggio per gli stimoli associati al sé (“TU”) potrebbe essere leggermente più marcato nel gruppo HSAM rispetto ai controlli. Tuttavia, l’intervallo di credibilità al 90% \[−0.01 ; 0.08\] include lo zero, indicando incertezza sull’effettiva direzione e consistenza dell’effetto.
+
+L'analisi della distribuzione a posteriori mostra che:
+
+-   La probabilità che β₃ sia positivo è 89.1%, mentre quella che sia negativo è 10.9%.
+
+-   La probabilità che β₃ cada nel "null interval" (NI) di ±10ms (cioè un effetto trascurabile) è 27.9%.
+
+-   A confronto, la probabilità a priori che β₃ fosse nel NI era 18.1%, per cui i dati hanno lievemente aumentato l’evidenza a favore di un effetto nullo, con un incremento del +9.7% rispetto alla prior.
+
+    Il fatto che quasi un terzo della distribuzione a posteriori cada nel NI suggerisce che non vi sia sufficiente evidenza per affermare un effetto differenziale tra i gruppi.
 
 ```{r}
 library(ggplot2)
@@ -404,3 +447,7 @@ if (!file.exists("fit_gamma_freq")) {
 }
 summary(fit_gamma)
 ```
+
+::: {style="display: flex; justify-content: space-between; margin-top: 2em;"}
+<a href="analisi_matching.html" class="btn btn-outline-secondary">← Matching Task</a> <a href="power_go_nogo.html" class="btn btn-primary">Power Analysis →</a>
+:::

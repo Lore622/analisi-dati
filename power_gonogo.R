@@ -5,7 +5,7 @@
 rm(list=ls())
 
 
-N=10000
+N=10
 n_trial=100
 b0 <- -0.7   #500 ms alla baseline--> CNTRL - SCONOSCIUTO
 b1 <- 0.183   #exp=1.2 significa che effetto I quando =TU aumenta RT 20% rispettp sconosciuto
