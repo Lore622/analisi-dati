@@ -79,7 +79,7 @@ Calcoliamo rate usando la formula inversa shape=mu/rate
 shape=17
 log_mu <- with(df, b0 + b1*I + b2*G + b3*I*G +b0i + b1i * I)
 mu <- exp(log_mu)
-rate<-mu/shape
+rate<-shape/mu
 
 df$y  <- rgamma(nrow(df), shape = shape, scale = mu / shape)
 
@@ -138,7 +138,7 @@ library(brms)
   set_prior( paste0("student_t(3, 0, .08)"), class = "b", 
              coef = "I:G"),
   set_prior( paste0("student_t(3, 0, 1)"), class = "sd" ),
-  set_prior(paste0("gamma(", shape, ", 34)"), class = "shape"))
+  set_prior(paste0("gamma(", shape, ", 17)"), class = "shape"))
 ```
 
 ```{r}
@@ -224,7 +224,7 @@ datadir <- "./"  # o dove vuoi salvare i file
 LETTER <- "A"
 
 form <- bf(y ~ I * G + (1 + I | id), family = Gamma(link = "log"))
-
+EXP2_all <- NULL  
 
 # Funzione per simulare i dati
 for (n in sample_size) {
@@ -273,15 +273,22 @@ for (n in sample_size) {
   }
   
   save(EXP2, file = paste0(datadir, "power_sim_", SCENARIO, "_n", n, LETTER, ".rda"))
+   EXP2_all <- rbind(EXP2_all, EXP2)  
 }
 
 
-EXP2_b3 <- subset(EXP2, par == "I:G"& converged == TRUE)
+EXP2_b3 <- subset(EXP2_all, par == "I:G"& converged == TRUE)
 power_by_n <- aggregate(detected ~ n, data = EXP2_b3, FUN = mean)
 print(power_by_n)
 
-
+save(EXP2_all, file = paste0(datadir, "power_sim_", SCENARIO, "_ALL", LETTER, ".rda"))
 ```
+
+Per verificare il funzionamento dell’algoritmo, ho eseguito un test locale sul mio PC riducendo il numero di iterazioni a 10 per ciascuna numerosità campionaria e abbassando il numero di trial da 100 a 30.\
+
+![Stima preliminare della potenza](power_b3.png)
+
+Sebbene i risultati ottenuti non siano statisticamente affidabili, sembrano indicare che il codice gira correttamente. Possiamo quindi procedere con l’implementazione su SLURM per l’analisi completa.
 
 ::: {style="text-align: left; margin-top: 2em;"}
 <a href="analisi_go_nogo.html" class="btn btn-outline-secondary">← Go/No-Go</a>

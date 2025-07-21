@@ -21,22 +21,7 @@ library(ggplot2)
 # Mappa per rendere i nomi più leggibili (facoltativo)
 df$identity_label <- ifelse(df$identity == "matching TU", "TU", "SCONOSCIUTO")
 
-# Grafico con densità sovrapposte
-ggplot(df, aes(x = rt, fill = identity_label, color = identity_label)) +
-  geom_density(alpha = 0.4) +
-  scale_fill_manual(values = c("TU" = "cyan", "SCONOSCIUTO" = "salmon")) +
-  scale_color_manual(values = c("TU" = "cyan4", "SCONOSCIUTO" = "red3")) +
-  labs(
-    x = "RT",
-    y = "Densità",
-    fill = NULL,
-    color = NULL,
-    title = "RT Matching TU vs SCONOSCIUTO"
-  ) +
-  theme_minimal(base_size = 13) +
-  theme(
-    legend.position = "right"
-  )
+
 
 
 # crea funzione che per ogni partecipante cacoli media ed sd rt corretti
@@ -105,6 +90,24 @@ pulizia <- function(df){
 
 df_pulito <- pulizia(df)
 
+
+# Grafico con densità sovrapposte
+ggplot(df_pulito, aes(x = rt, fill = identity_label, color = identity_label)) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values = c("TU" = "cyan", "SCONOSCIUTO" = "salmon")) +
+  scale_color_manual(values = c("TU" = "cyan4", "SCONOSCIUTO" = "red3")) +
+  labs(
+    x = "RT",
+    y = "Densità",
+    fill = NULL,
+    color = NULL,
+    title = "RT Matching TU vs SCONOSCIUTO"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    legend.position = "right"
+  )
+
 #length(df_pulito$rt[df_pulito$id_subj=="CNTRL01"])
 
 #aggiungiamo match_id:
@@ -138,9 +141,59 @@ df_pulito <- pulizia(df)
 # df_pulito$match_id <- as.factor(df_pulito$match_id)
 # df_pulito$id_subj <- as.factor(df_pulito$id_subj)   
 
-
 df_pulito$identity_label <- factor(df_pulito$identity_label, levels = c("SCONOSCIUTO", "TU"))
 df_pulito$group <- factor(df_pulito$group, levels = c("CTRL", "HSAM"))
+
+
+
+#vediamo medie:
+# Calcola media e sd
+media <- tapply(df_pulito$rt, df_pulito$identity_label, mean)
+dev_std <- tapply(df_pulito$rt, df_pulito$identity_label, sd)
+
+# Arrotonda a una cifra decimale
+media <- round(media, 3)
+dev_std <- round(dev_std, 3)
+ 
+
+#ora vediamo le medie sia per condizione che per gruppo
+#quindi hsam tu vs sconosciuto:
+#cntrl tu vs sconosciuto:
+
+df_hsam<-subset(df_pulito,df_pulito$group=="HSAM",select=c(rt,id_subj,group,acc,identity_label))
+media_hsam<-tapply(df_hsam$rt,df_hsam$identity_label,mean)
+sd_hsam<-tapply(df_hsam$rt,df_hsam$identity_label,sd)
+
+df_cntrl<-subset(df_pulito,df_pulito$group=="CTRL",select=c(rt,id_subj,group,acc,identity_label))
+media_cntrl<-tapply(df_cntrl$rt,df_cntrl$identity_label,mean)
+sd_cntrl<-tapply(df_cntrl$rt,df_cntrl$identity_label,sd)
+
+# Filtra solo le prove TU
+df_tu <- df_pulito[df_pulito$identity_label == "TU", ]
+
+# Grafico: RT matching-TU confronto tra gruppi
+ggplot(df_tu, aes(x = rt, fill = group, color = group)) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values = c("HSAM" = "steelblue", "CTRL" = "darkgrey")) +
+  scale_color_manual(values = c("HSAM" = "steelblue4", "CTRL" = "darkgrey")) +
+  labs(
+    x = "RT",
+    y = "Densità",
+    fill = NULL,
+    color = NULL,
+    title = "RT Matching-TU: gruppo HSAM vs CNTRL"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "right")
+
+
+
+
+
+
+
+
+
 
 library(brms)
 
